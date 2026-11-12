@@ -1429,8 +1429,7 @@ and not the second.")
 (defun plain (offset)
   "Parser: A single, unadorned word."
   (funcall (p:recognize (*> (p:take-while1 (lambda (c) (and (not (char= c #\space))
-                                                            (not (char= c #\newline))
-                                                            (not (char= c #\[)))))
+                                                            (not (char= c #\newline)))))
                             (p:opt (*> (p:not #'footnote-ref)
                                        +bracket-open+
                                        (p:take-while1 (lambda (c) (and (not (char= c #\space))
