@@ -73,7 +73,7 @@
 (defparameter +inline-html-close+ (p:string "@@"))
 (defparameter +footnote-start+ (p:string "[fn:"))
 (defparameter +label-start+ (p:string "#+"))
-(defparameter +results-start+ (p:string "#+RESULTS:"))
+(defparameter +results-start+ (p:alt (p:string "#+RESULTS:") (p:string "#+results:")))
 (defparameter +caption-start+ (p:alt (p:string "#+CAPTION") (p:string "#+caption")))
 (defparameter +plot-start+ (p:alt (p:string "#+PLOT: ") (p:string "#+plot: ")))
 (defparameter +name+ (p:alt (p:string "#+NAME: ") (p:string "#+name: ")))
