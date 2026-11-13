@@ -12,7 +12,7 @@
   (:local-nicknames (#:p #:parcom)
                     (#:d #:parcom/datetime))
   ;; --- Entry --- ;;
-  (:export #:from-string #:from-file)
+  (:export #:from-string #:from-file :from-org)
   ;; --- Generics --- ;;
   (:export #:text)
   ;; --- Documents --- ;;
