@@ -47,6 +47,16 @@
   "Parse an entire org file given a path to it."
   (from-string (string-from-file path)))
 
+(defmacro from-org (in)
+  "Parse an org file from either a string or path and then evaluate the
+S-EXP representation of the org AST, which by default will return the
+AST as the struct specification in `types.lisp'. This can be
+overridden by redefining the constructors, e.g. for using CLOS instead
+of plain structs."
+  (typecase in
+    (string `(progn ,(from-string in)))
+    (pathname `(progn ,(from-file in)))))
+
 #+nil
 (from-file "tests/everything.org")
 
@@ -78,6 +88,3 @@
 (fn list->vector (-> list vector))
 (defun list->vector (list)
   (coerce list 'vector))
-
-(defmacro parse-org (in)
-  `(progn ,(from-file in)))
