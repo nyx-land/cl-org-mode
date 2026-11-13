@@ -152,10 +152,10 @@ or the parse will fail."
 
 ;; --- Whole Files --- ;;
 
-(fn file (maybe file))
+(fn file (maybe list))
 (defun file (offset)
   "Parser: An entire .org file."
-  (funcall (p:ap (lambda (meta doc) (make-file :metadata meta :document doc))
+  (funcall (p:ap (lambda (meta doc) `(make-file :metadata ,meta :document ,doc))
                  #'metadata
                  (*> +consume-junk+ (document 0)))
            offset))
@@ -163,13 +163,13 @@ or the parse will fail."
 #+nil
 (from-file "tests/lists.org")
 
-(fn metadata (maybe metadata))
+(fn metadata (maybe list))
 (defun metadata (offset)
   "Parser: All extra information at the top of the file."
   (funcall (p:ap (lambda (comments props pairs)
-                   (make-metadata :comments (coerce comments 'vector)
-                                  :properties props
-                                  :metadata pairs))
+                   `(make-metadata :comments (coerce (list ,@comments) 'vector)
+                                   :properties (list ,@props)
+                                   :metadata ,pairs))
                  (*> +consume-junk+ (p:sep-end +newline+ #'comment))
                  (*> +consume-junk+ (p:opt #'properties))
                  (*> +consume-junk+ #'metadata-kv-pairs))
@@ -208,13 +208,13 @@ or the parse will fail."
 
 Content")
 
-(fn comment (maybe comment))
+(fn comment (maybe list))
 (defun comment (offset)
   ;; FIXME: 2025-09-19 Should this proactively trim whitespace off the end?
   ;;
   ;; 2025-10-02 At least it should not do so for the beginning of the string, as
   ;; it's common for users to format messages by hand with leading spaces.
-  (funcall (p:ap (lambda (text) (make-comment :text (coerce text 'vector)))
+  (funcall (p:ap (lambda (text) `(make-comment :text (coerce (list ,@text) 'vector)))
                  (p:sep-end1
                   +newline+
                   (*> (p:not #'label)
@@ -257,13 +257,13 @@ tables and source blocks."
 
 ;; --- Documents and Sections --- ;;
 
-(fn document (-> fixnum (maybe document)))
+(fn document (-> fixnum (maybe list)))
 (defun document (stars)
   "Parser: Many blocks and any subsections of deeper depth."
   (lambda (offset)
     (funcall (p:ap (lambda (blocks sections)
-                     (make-document :blocks (coerce blocks 'vector)
-                                    :sections (coerce sections 'vector)))
+                     `(make-document :blocks (coerce (list ,@blocks) 'vector)
+                                     :sections (coerce (list ,@sections) 'vector)))
                    (p:sep-end +consume-junk+ #'block)
                    (*> +consume-junk+
                        ;; NOTE: 2025-09-17 There was originally a `sep-end'
@@ -285,11 +285,11 @@ tables and source blocks."
 
 Stuff")
 
-(fn section (-> fixnum (maybe section)))
+(fn section (-> fixnum (maybe list)))
 (defun section (stars)
   "Parser: A heading and any subsequent content."
   (lambda (offset)
-    (funcall (p:ap (lambda (head doc) (make-section :heading head :document doc))
+    (funcall (p:ap (lambda (head doc) `(make-section :heading ,head :document ,doc))
                    (depth-sensitive-heading stars)
                    (*> +consume-junk+ (document stars)))
              offset)))
@@ -349,7 +349,7 @@ Yes."))
             #'footnote #'horizontal-line #'html-line)
            offset))
 
-(fn block (maybe block))
+(fn block (maybe list))
 (defun block (offset)
   "Parser: A complex object or a plain paragraph."
   (funcall (p:alt #'complex-object #'paragraph) offset))
@@ -367,7 +367,7 @@ Yes."))
   "Parser: Like `block', but can't contain other drawers."
   (funcall (p:alt #'complex-object-not-drawer #'paragraph-in-drawer) offset))
 
-(fn listing (maybe listing))
+(fn listing (maybe list))
 (defun listing (offset)
   (funcall (depth-sensitive-listing -1) offset))
 
@@ -376,7 +376,7 @@ Yes."))
   - [x] B
   - [ ] C")
 
-(fn depth-sensitive-listing (-> fixnum (maybe listing)))
+(fn depth-sensitive-listing (-> fixnum (maybe list)))
 (defun depth-sensitive-listing (depth)
   (lambda (offset)
     (multiple-value-bind (res next)
@@ -394,8 +394,8 @@ Yes."))
         ;; that is actually a child of a higher layer.
         ((<= (- res offset) depth) (p:fail offset))
         (t (funcall (p:ap (lambda (type items)
-                            (make-listing :type type
-                                          :items (coerce items 'vector)))
+                            `(make-listing :type ,type
+                                           :items (coerce (list ,@items) 'vector)))
                           ;; FIXME: 2025-09-29 We do have to repeat the parse of
                           ;; the bullet type here though, which is pretty
                           ;; annoying. And it'll get parsed a third time down in
@@ -444,15 +444,15 @@ B*")
 #+nil
 (p:parse #'list-bullet "1.")
 
-(fn list-item (-> fixnum (maybe list-item)))
+(fn list-item (-> fixnum (maybe list)))
 (defun list-item (depth)
   (lambda (offset)
     (funcall
      (p:ap (lambda (status words progress sublist)
-             (make-list-item :status status
-                             :words (apply #'concatenate 'vector words)
-                             :progress progress
-                             :sublist sublist))
+             `(make-list-item :status ,status
+                              :words (apply #'concatenate 'vector (list ,@words))
+                              :progress ,progress
+                              :sublist ,sublist))
            (*> (consume-n depth (lambda (c) (char= c #\space)))
                #'list-bullet
                +space+ +consume-space+
@@ -523,15 +523,15 @@ B*")
 #+nil
 (p:parse #'list-item-line "Hello *there* [1/2]")
 
-(fn table (maybe table))
+(fn table (maybe list))
 (defun table (offset)
   (funcall (p:ap (lambda (caption attrs plot name rows form)
-                   (make-table :caption caption
-                               :attrs attrs
-                               :plot plot
-                               :name name
-                               :rows (coerce rows 'vector)
-                               :form form))
+                   `(make-table :caption ,caption
+                                :attrs ,attrs
+                                :plot ,plot
+                                :name ,name
+                                :rows (coerce (list ,@rows) 'vector)
+                                :form ,form))
                  (p:opt (<* #'caption +consume-space+ +newline+))
                  (p:opt #'attrs)
                  (p:opt (<* #'plot +newline+))
@@ -554,9 +554,9 @@ B*")
 | Morelia   |    257.56 |   17.67 |
 #+TBLFM: $total=vsum(@I..@II)")
 
-(fn caption (maybe caption))
+(fn caption (maybe list))
 (defun caption (offset)
-  (funcall (p:ap (lambda (short long) (make-caption :short short :long long))
+  (funcall (p:ap (lambda (short long) `(make-caption :short ,short :long ,long))
                  (*> +caption-start+
                      (p:opt (p:between +bracket-open+
                                        (p:take-while (lambda (c) (and (not (char= c #\newline))
@@ -611,10 +611,10 @@ B*")
 #+nil
 (p:parse #'cell "hello *there* sir |")
 
-(fn clock-table (maybe clock-table))
+(fn clock-table (maybe list))
 (defun clock-table (offset)
   "Parser: An auto-generated `clocktable' object."
-  (funcall (p:ap (lambda (settings table) (make-clock-table :settings settings :table table))
+  (funcall (p:ap (lambda (settings table) `(make-clock-table :settings ,settings :table ,table))
                  (*> +clocktable-begin+
                      +consume-space+
                      +clocktable-label+
@@ -645,13 +645,13 @@ often a paragraph-like thing exists within some other complex object like a
 Drawer or a Quote block, etc."
   `(funcall
     (p:ap (lambda (lists)
-            (make-paragraph :words (coerce (apply #'append lists) 'vector)))
+            `(make-paragraph :words (coerce (apply #'append (list ,@lists)) 'vector)))
           (p:sep-end1 +newline+
                       (*> ,@(mapcar (lambda (hp) `(p:not ,hp)) halting-parsers)
                           #'line)))
     ,offset))
 
-(fn paragraph (maybe paragraph))
+(fn paragraph (maybe list))
 (defun paragraph (offset)
   "A single body of text which runs until a double-newline or a header is
 encountered."
@@ -672,7 +672,7 @@ Fourth line - shouldn't parse!")
 *** A header!
 Paragraph of next section.")
 
-(fn paragraph-in-drawer (maybe paragraph))
+(fn paragraph-in-drawer (maybe list))
 (defun paragraph-in-drawer (offset)
   "A single body of text which runs until a double-newline, header, or drawer :END:
 is encountered."
@@ -682,7 +682,7 @@ is encountered."
 (p:parse #'paragraph-in-drawer "Hello
 :END:")
 
-(fn paragraph-in-quote (maybe paragraph))
+(fn paragraph-in-quote (maybe list))
 (defun paragraph-in-quote (offset)
   "A single body of text which runs until a double-newline, header, or END_QUOTE
 is encountered."
@@ -692,7 +692,7 @@ is encountered."
 (p:parse #'paragraph-in-quote "Hello
 #+END_QUOTE")
 
-(fn paragraph-in-center (maybe paragraph))
+(fn paragraph-in-center (maybe list))
 (defun paragraph-in-center (offset)
   "A single body of text which runs until a double-newline, header, or END_CENTER
 is encountered."
@@ -702,7 +702,7 @@ is encountered."
 (p:parse #'paragraph-in-center "Hello
 #+END_CENTER")
 
-(fn paragraph-in-comment (maybe paragraph))
+(fn paragraph-in-comment (maybe list))
 (defun paragraph-in-comment (offset)
   "A single body of text which runs until a double-newline, header, or END_COMMENT
 is encountered."
@@ -712,10 +712,10 @@ is encountered."
 (p:parse #'paragraph-in-comment "Hello
 #+END_COMMENT")
 
-(fn quote (maybe quote))
+(fn quote (maybe list))
 (defun quote (offset)
   "Parser: A QUOTE block."
-  (funcall (p:ap (lambda (paragraphs) (make-quote :text (list->vector paragraphs)))
+  (funcall (p:ap (lambda (paragraphs) `(make-quote :text (list->vector (list ,@paragraphs))))
                  (p:between (*> +quote-open+ +consume-junk+)
                             (p:sep-end +consume-junk+ #'paragraph-in-quote)
                             +quote-close+))
@@ -733,10 +733,10 @@ is encountered."
 (p:parse #'quote "#+begin_quote
 #+end_quote")
 
-(fn complex-comment (maybe complex-comment))
+(fn complex-comment (maybe list))
 (defun complex-comment (offset)
   "Parser: A COMMENT block."
-  (funcall (p:ap (lambda (paragraphs) (make-complex-comment :text (list->vector paragraphs)))
+  (funcall (p:ap (lambda (paragraphs) `(make-complex-comment :text (list->vector (list ,@paragraphs))))
                  (p:between (*> +comment-open+ +consume-junk+)
                             (p:sep-end +consume-junk+ #'paragraph-in-comment)
                             +comment-close+))
@@ -747,10 +747,10 @@ is encountered."
 Supports *markup*!
 #+end_comment")
 
-(fn center (maybe center))
+(fn center (maybe list))
 (defun center (offset)
   "Parser: A CENTER block. When exported, the text therein should be centered."
-  (funcall (p:ap (lambda (paragraphs) (make-center :text (list->vector paragraphs)))
+  (funcall (p:ap (lambda (paragraphs) `(make-center :text (list->vector (list ,@paragraphs))))
                  (p:between (*> +center-open+ +consume-junk+)
                             (p:sep-end +consume-junk+ #'paragraph-in-center)
                             +center-close+))
@@ -763,11 +763,11 @@ Supports *markup*!
 同行二人
 #+end_center")
 
-(fn example (maybe example))
+(fn example (maybe list))
 (defun example (offset)
   "Parser: An Example block. Always contains verbatim text, so internal markup is
 interpreted as normal text."
-  (funcall (p:ap (lambda (list) (make-example :text (coerce list 'vector)))
+  (funcall (p:ap (lambda (list) `(make-example :text (coerce (list ,@list) 'vector)))
                  (p:between (*> +example-open+ +newline+)
                             (p:sep-end +newline+
                                        (*> (p:not +example-close+)
@@ -786,10 +786,10 @@ Now the second thing.
 (p:parse #'example "#+begin_example
 #+end_example")
 
-(fn verse (maybe verse))
+(fn verse (maybe list))
 (defun verse (offset)
   "Parser: A VERSE block, in which indentation and blank lines are preserved."
-  (funcall (p:ap (lambda (lines) (make-verse :text (list->vector lines)))
+  (funcall (p:ap (lambda (lines) `(make-verse :text (list->vector (list ,@lines))))
                  (p:between (*> +verse-open+ +consume-junk+)
                             (p:many (*> (p:not +verse-close+)
                                         (<* #'verse-line +newline+)))
@@ -810,10 +810,10 @@ This is goodbye.
 #+END_VERSE")
 
 ;; NOTE: 2025-10-15 Results in TABs being replaced by SPACE.
-(fn verse-line (maybe verse-line))
+(fn verse-line (maybe list))
 (defun verse-line (offset)
-  (funcall (p:ap (lambda (indent words) (make-verse-line :indent (length indent)
-                                                         :text (list->vector words)))
+  (funcall (p:ap (lambda (indent words) `(make-verse-line :indent (length ,indent)
+                                                          :text (list->vector (list ,@words))))
                  (p:take-while (lambda (c) (or (char= c #\space)
                                                (char= c #\tab))))
                  (p:alt #'line (p:pure '())))
@@ -824,14 +824,14 @@ This is goodbye.
 #+nil
 (p:parse #'verse-line "")
 
-(fn code (maybe code))
+(fn code (maybe list))
 (defun code (offset)
   "Parser: A src code block."
   (funcall (p:ap (lambda (name lang vars code)
-                   (make-code :name name
-                              :lang lang
-                              :vars vars
-                              :text (coerce code 'vector)))
+                   `(make-code :name ,name
+                               :lang ,lang
+                               :vars ,vars
+                               :text (coerce (list ,@code) 'vector)))
                  (p:opt (<* #'name +newline+))
                  (*> +code-open+
                      +consume-space+
@@ -863,10 +863,10 @@ This is goodbye.
 (+ 1 1)
 #+end_src")
 
-(fn result (maybe result))
+(fn result (maybe list))
 (defun result (offset)
   "Parser: The RESULTS block that can follow a src block."
-  (funcall (p:ap (lambda (name text) (make-result :name name :text text))
+  (funcall (p:ap (lambda (name text) `(make-result :name ,name :text ,text))
                  (*> +results-start+
                      +consume-space+
                      (p:opt +take1-til-break+))
@@ -926,7 +926,7 @@ This is goodbye.
 #+nil
 (p:parse #'timestamps "CLOSED: [2021-04-28 Wed 15:10] DEADLINE: <2021-04-29 Thu> SCHEDULED: <2021-04-28 Wed>")
 
-(fn scheduled (maybe timestamp))
+(fn scheduled (maybe list))
 (defun scheduled (offset)
   (funcall (*> +scheduled+
                +consume-space+
@@ -940,7 +940,7 @@ This is goodbye.
 #+nil
 (p:parse #'scheduled "SCHEDULED: <2021-04-30 Fri 13:00 .+1w -1d>")
 
-(fn deadline (maybe timestamp))
+(fn deadline (maybe list))
 (defun deadline (offset)
   (funcall (*> +deadline+
                +consume-space+
@@ -952,7 +952,7 @@ This is goodbye.
 #+nil
 (p:parse #'deadline "DEADLINE: <2021-04-30 Fri>")
 
-(fn closed (maybe timestamp))
+(fn closed (maybe list))
 (defun closed (offset)
   (funcall (*> +closed+
                +consume-space+
@@ -962,7 +962,7 @@ This is goodbye.
 #+nil
 (p:parse #'closed "CLOSED: [2021-04-30 Fri 12:34]")
 
-(fn bracketed-timestamp (maybe timestamp))
+(fn bracketed-timestamp (maybe list))
 (defun bracketed-timestamp (offset)
   (funcall (p:between +bracket-open+
                       #'timestamp
@@ -972,10 +972,10 @@ This is goodbye.
 #+nil
 (p:parse #'bracketed-timestamp "[2021-04-30 Fri 12:34]")
 
-(fn timestamp (maybe timestamp))
+(fn timestamp (maybe list))
 (defun timestamp (offset)
   (funcall (p:ap (lambda (day dow time repeat delay)
-                   (make-timestamp :day day :day-of-week dow :time time :repeat repeat :delay delay))
+                   `(make-timestamp :day ,day :day-of-week ,dow :time ,time :repeat ,repeat :delay ,delay))
                  #'d:local-date
                  (*> +consume-space+ (p:take-while #'p:ascii-letter?))
                  (p:opt (*> +consume-space+ #'d:simple-local-time))
@@ -989,10 +989,10 @@ This is goodbye.
 #+nil
 (p:parse #'timestamp "2025-08-31 So")
 
-(fn repeat (maybe repeat))
+(fn repeat (maybe list))
 (defun repeat (offset)
   (funcall (p:ap (lambda (mode value interval)
-                   (make-repeat :mode mode :value value :interval interval))
+                   `(make-repeat :mode ,mode :value ,value :interval ,interval))
                  (p:alt (<$ :from-today (p:string ".+"))
                         (<$ :jump (p:string "++"))
                         (<$ :single +plus+))
@@ -1003,10 +1003,10 @@ This is goodbye.
 #+nil
 (p:parse #'repeat ".+1w")
 
-(fn delay (maybe delay))
+(fn delay (maybe list))
 (defun delay (offset)
   (funcall (p:ap (lambda (mode value interval)
-                   (make-delay :mode mode :value value :interval interval))
+                   `(make-delay :mode ,mode :value ,value :interval ,interval))
                  (p:alt (<$ :one (p:string "--"))
                         (<$ :all +dash+))
                  #'p:unsigned
@@ -1027,35 +1027,35 @@ This is goodbye.
 ;; --- Headings --- ;;
 
 ;; TODO: 2025-09-16 Create a vector-based cache for the inner lambdas here.
-(fn depth-sensitive-heading (-> fixnum (maybe heading)))
+(fn depth-sensitive-heading (-> fixnum (maybe list)))
 (defun depth-sensitive-heading (stars)
   "A variant of `heading' which knows how deep it should be parsing."
   (lambda (offset)
     (multiple-value-bind (res next) (heading offset)
       (cond ((p:failure? res) (p:fail next))
-            ((not (= stars (heading-depth res))) (p:fail offset))
+            ((not (= stars (getf (cdr res) :depth))) (p:fail offset))
             (t (values res next))))))
 
 #+nil
 (p:parse (depth-sensitive-heading 2) "* Simplest")
 
-(fn heading (maybe heading))
+(fn heading (maybe list))
 (defun heading (offset)
   "Perhaps the busiest object in the whole library!"
   (funcall (p:ap (lambda (depth todo commented priority text progress tags tss ts ps log)
-                   (make-heading :depth depth
-                                 :todo todo
-                                 :commented commented
-                                 :priority priority
-                                 :text text
-                                 :progress progress
-                                 :tags (or tags (vector))
-                                 :closed (getf tss :closed)
-                                 :deadline (getf tss :deadline)
-                                 :scheduled (getf tss :scheduled)
-                                 :timestamp ts
-                                 :properties ps
-                                 :logbook (or log (vector))))
+                   `(make-heading :depth ,depth
+                                  :todo ,todo
+                                  :commented ,commented
+                                  :priority ,priority
+                                  :text ,text
+                                  :progress ,progress
+                                  :tags (or ,tags (vector))
+                                  :closed (getf (list ,@tss) :closed)
+                                  :deadline (getf (list ,@tss) :deadline)
+                                  :scheduled (getf (list ,@tss) :scheduled)
+                                  :timestamp ,ts
+                                  :properties ',ps
+                                  :logbook (or ,log (vector))))
                  (<* #'bullets-of-heading +space+)
                  (*> +consume-space+ (p:opt (<* #'todo
                                                 (p:alt (p:sneak #\space)
@@ -1141,7 +1141,7 @@ Content")
 #+nil
 (p:parse #'bullets-of-heading "*** Hello")
 
-(fn todo (maybe todo))
+(fn todo (maybe list))
 (defun todo (offset)
   "Parser: A single capital word. The word must be at least two letters long
 in order to avoid parsing the normal word A as a TODO-like token.
@@ -1155,14 +1155,14 @@ within heading lines to prevent entire subtrees from being exported."
                offset)
     (cond ((p:failure? res) (p:fail next))
           ((= 1 (length res)) (p:fail offset))
-          (t (values (make-todo :text res) next)))))
+          (t (values `(make-todo :text ,res) next)))))
 
 #+nil
 (p:parse #'todo "TODO")
 
-(fn priority (maybe priority))
+(fn priority (maybe list))
 (defun priority (offset)
-  (p:fmap (lambda (s) (make-priority :text s))
+  (p:fmap (lambda (s) `(make-priority :text ,s))
           (funcall (p:between +bracket-open+
                               (*> +octothorp+
                                   (p:take-while1 (lambda (c) (not (char= c #\])))))
@@ -1191,10 +1191,10 @@ within heading lines to prevent entire subtrees from being exported."
 (defun progress (offset)
   (funcall (p:alt #'percentage #'ratio) offset))
 
-(fn percentage (maybe percentage))
+(fn percentage (maybe list))
 (defun percentage (offset)
   "Parser: A box like [37%]."
-  (p:fmap (lambda (n) (make-percentage :number n))
+  (p:fmap (lambda (n) `(make-percentage :number ,n))
           (funcall (p:between +bracket-open+
                               (<* #'p:unsigned +percent+)
                               +bracket-close+)
@@ -1203,11 +1203,11 @@ within heading lines to prevent entire subtrees from being exported."
 #+nil
 (p:parse #'percentage "[37%]")
 
-(fn ratio (maybe ratio))
+(fn ratio (maybe list))
 (defun ratio (offset)
   "Parser: A box like [1/2]."
   (funcall (p:between +bracket-open+
-                      (p:ap (lambda (num denom) (make-ratio :numerator num :denominator denom))
+                      (p:ap (lambda (num denom) `(make-ratio :numerator ,num :denominator ,denom))
                             #'p:unsigned
                             (*> +slash+ #'p:unsigned))
                       +bracket-close+)
@@ -1276,10 +1276,10 @@ CLOCK: [2025-10-08 Mi 04:50]--[2025-10-08 Mi 06:20] =>  1:30
 CLOCK: [2025-10-07 Di 07:08]--[2025-10-07 Di 07:57] =>  0:49
 :END:")
 
-(fn logbook-item (maybe logbook-item))
+(fn logbook-item (maybe list))
 (defun logbook-item (offset)
   "Parser: A single item of a LOGBOOK drawer."
-  (funcall (p:ap (lambda (start end total) (make-logbook-item :start start :end end :total total))
+  (funcall (p:ap (lambda (start end total) `(make-logbook-item :start ,start :end ,end :total ,total))
                  (*> +clock+ +consume-space+ #'bracketed-timestamp)
                  ;; FIXME: 2025-10-10 Technically it's naughty that these two
                  ;; are `opt' separately.
@@ -1293,10 +1293,10 @@ CLOCK: [2025-10-07 Di 07:08]--[2025-10-07 Di 07:57] =>  0:49
 #+nil
 (p:parse #'logbook-item "CLOCK: [2025-10-08 Mi 04:50]--[2025-10-08 Mi 06:20] =>  1:30")
 
-(fn total-time (maybe total))
+(fn total-time (maybe list))
 (defun total-time (offset)
   "Parser: The total time of a logbook item."
-  (funcall (p:ap (lambda (hours mins) (make-total :hours hours :minutes mins))
+  (funcall (p:ap (lambda (hours mins) `(make-total :hours ,hours :minutes ,mins))
                  #'p:unsigned
                  (*> +colon+
                      (p:opt +zero+)
@@ -1314,7 +1314,11 @@ CLOCK: [2025-10-07 Di 07:08]--[2025-10-07 Di 07:57] =>  0:49
 (defun line (offset)
   "Parser: As many `words' as possible without going over a line break. Does not
 consume any newline characters."
-  (funcall (p:sep-end1 +consume-space+ #'words) offset))
+  (multiple-value-bind (res next)
+      (funcall (p:sep-end1 +consume-space+ #'words) offset)
+    (if (p:failure? res)
+        (p:fail next)
+        (values `(list ,@res) next))))
 
 #+nil
 (p:parse #'line "Hello what a *fine* day!")
@@ -1356,9 +1360,9 @@ and not the second.")
 ;; can stretch over line breaks, but only one at a time. A paragraph break (two
 ;; newlines) stops the markup. Will definitely need unit tests for that.
 
-(fn bold (maybe bold))
+(fn bold (maybe list))
 (defun bold (offset)
-  (p:fmap (lambda (s) (make-bold :text s))
+  (p:fmap (lambda (s) `(make-bold :text ,s))
           (funcall (p:between +star+
                               (p:take-while1 (lambda (c) (not (char= c #\*))))
                               +star+)
@@ -1367,9 +1371,9 @@ and not the second.")
 #+nil
 (p:parse #'bold "*hello*")
 
-(fn italic (maybe italic))
+(fn italic (maybe list))
 (defun italic (offset)
-  (p:fmap (lambda (s) (make-italic :text s))
+  (p:fmap (lambda (s) `(make-italic :text ,s))
           (funcall (p:between +slash+
                               (p:take-while1 (lambda (c) (not (char= c #\/))))
                               +slash+)
@@ -1378,9 +1382,9 @@ and not the second.")
 #+nil
 (p:parse #'italic "/hello/")
 
-(fn highlight (maybe highlight))
+(fn highlight (maybe list))
 (defun highlight (offset)
-  (p:fmap (lambda (s) (make-highlight :text s))
+  (p:fmap (lambda (s) `(make-highlight :text ,s))
           (funcall (p:between +tilde+
                               (p:take-while1 (lambda (c) (not (char= c #\~))))
                               +tilde+)
@@ -1389,9 +1393,9 @@ and not the second.")
 #+nil
 (p:parse #'highlight "~hello~")
 
-(fn verbatim (maybe verbatim))
+(fn verbatim (maybe list))
 (defun verbatim (offset)
-  (p:fmap (lambda (s) (make-verbatim :text s))
+  (p:fmap (lambda (s) `(make-verbatim :text ,s))
           (funcall (p:between +equal+
                               (p:take-while1 (lambda (c) (not (char= c #\=))))
                               +equal+)
@@ -1400,9 +1404,9 @@ and not the second.")
 #+nil
 (p:parse #'verbatim "=hello=")
 
-(fn underline (maybe underline))
+(fn underline (maybe list))
 (defun underline (offset)
-  (p:fmap (lambda (s) (make-underline :text s))
+  (p:fmap (lambda (s) `(make-underline :text ,s))
           (funcall (p:between +under+
                               (p:take-while1 (lambda (c) (not (char= c #\_))))
                               +under+)
@@ -1411,9 +1415,9 @@ and not the second.")
 #+nil
 (p:parse #'underline "_hello_")
 
-(fn strike (maybe strike))
+(fn strike (maybe list))
 (defun strike (offset)
-  (p:fmap (lambda (s) (make-strike :text s))
+  (p:fmap (lambda (s) `(make-strike :text ,s))
           (funcall (p:between +plus+
                               (p:take-while1 (lambda (c) (not (char= c #\+))))
                               +plus+)
@@ -1465,10 +1469,10 @@ or footnote reference."
                                                (char= c #\])))))
            offset))
 
-(fn punct (maybe punct))
+(fn punct (maybe list))
 (defun punct (offset)
   "Parser: A single character of punctuation."
-  (p:fmap (lambda (c) (make-punct :char c))
+  (p:fmap (lambda (c) `(make-punct :char ,c))
           (funcall (p:any-if (lambda (c) (or (char= c #\.)
                                              (char= c #\,)
                                              (char= c #\!)
@@ -1484,12 +1488,12 @@ or footnote reference."
 #+nil
 (p:parse #'punct ",hello")
 
-(fn link (maybe link))
+(fn link (maybe list))
 (defun link (offset)
   (funcall (p:ap (lambda (attrs url text)
-                   (make-link :attrs attrs
-                              :url (make-url :text url)
-                              :text text))
+                   `(make-link :attrs ,attrs
+                               :url (make-url :text ,url)
+                               :text ,text))
                  (p:opt #'attrs)
                  (*> +bracket-open+ +between-brackets+)
                  (<* (p:opt (*> +bracket-open+
@@ -1513,13 +1517,13 @@ or footnote reference."
                                                 #'words-in-link)))
            offset))
 
-(fn image (maybe image))
+(fn image (maybe list))
 (defun image (offset)
   (funcall (p:ap (lambda (caption attrs name url)
-                   (make-image :caption caption
-                               :attrs attrs
-                               :name name
-                               :url url))
+                   `(make-image :caption ,caption
+                                :attrs ,attrs
+                                :name ,name
+                                :url ,url))
                  (p:opt (<* #'caption +newline+))
                  (p:opt #'attrs)
                  (p:opt (<* #'name +newline+))
@@ -1539,7 +1543,7 @@ or footnote reference."
 [[/path/to/img.jpeg]]")
 
 ;; https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types
-(fn url-of-image (maybe url))
+(fn url-of-image (maybe list))
 (defun url-of-image (offset)
   (multiple-value-bind (res next)
       (funcall (p:take-while1 (lambda (c) (not (char= c #\])))) offset)
@@ -1550,7 +1554,7 @@ or footnote reference."
                  (string-ends-with? res ".svg")
                  (string-ends-with? res ".webp")
                  (string-ends-with? res ".gif")))
-        (values (make-url :text res) next)
+        (values `(make-url :text ,res) next)
         (p:fail offset))))
 
 (fn name (maybe string))
@@ -1558,12 +1562,12 @@ or footnote reference."
   "Parser: A #+NAME line."
   (funcall (*> +name+ +take1-til-end+) offset))
 
-(fn attrs (maybe attrs))
+(fn attrs (maybe list))
 (defun attrs (offset)
   (funcall (p:ap (lambda (alist)
-                   (make-attrs :html  (cdr (assoc :html  alist))
-                               :org   (cdr (assoc :org   alist))
-                               :latex (cdr (assoc :latex alist))))
+                   `(make-attrs :html  (cdr (assoc :html  ,alist))
+                                :org   (cdr (assoc :org   ,alist))
+                                :latex (cdr (assoc :latex ,alist))))
                  (p:sep-end1 +newline+ #'attr-pair))
            offset))
 
@@ -1585,11 +1589,11 @@ or footnote reference."
 #+nil
 (p:parse #'attr-pair "#+ATTR_HTML: :title foo")
 
-(fn drawer (maybe drawer))
+(fn drawer (maybe list))
 (defun drawer (offset)
   "Parser: Any kind of drawer."
   (funcall (p:ap (lambda (label content)
-                   (make-drawer :label label :content (list->vector content)))
+                   `(make-drawer :label ,label :content (list->vector ,content)))
                  (<* #'drawer-labl +consume-junk+)
                  (<* (p:sep-end +consume-junk+
                                 (*> (p:not +end+) #'block-in-drawer))
@@ -1640,12 +1644,12 @@ After the drawer.")
 Content
 :END:")
 
-(fn footnote (maybe footnote))
+(fn footnote (maybe list))
 (defun footnote (offset)
   "Parser: A full, standalone fullnote."
   (funcall (p:ap (lambda (label content)
-                   (make-footnote :label label
-                                  :content (coerce (apply #'append content) 'vector)))
+                   `(make-footnote :label ,label
+                                   :content (coerce (apply #'append (list ,@content)) 'vector)))
                  (p:between +footnote-start+
                             (p:take-while1 (lambda (c) (and (not (char= c #\space))
                                                             (not (char= c #\newline))
@@ -1668,14 +1672,14 @@ a book I am referencing but have not read myself.
 
 This last line should not be part of the footnote.")
 
-(fn footnote-ref (maybe footnote-ref))
+(fn footnote-ref (maybe list))
 (defun footnote-ref (offset)
   (funcall (p:alt #'footnote-simple-ref #'footnote-inline-ref) offset))
 
-(fn footnote-simple-ref (maybe footnote-simple-ref))
+(fn footnote-simple-ref (maybe list))
 (defun footnote-simple-ref (offset)
   "Parser: A reference to a footnote that is defined somewhere else."
-  (funcall (p:ap (lambda (label) (make-footnote-simple-ref :label label))
+  (funcall (p:ap (lambda (label) `(make-footnote-simple-ref :label ,label))
                  (p:between +footnote-start+
                             (p:take-while1 (lambda (c) (and (not (char= c #\space))
                                                             (not (char= c #\newline))
@@ -1686,11 +1690,11 @@ This last line should not be part of the footnote.")
 #+nil
 (p:parse #'footnote-simple-ref "[fn:50]")
 
-(fn footnote-inline-ref (maybe footnote-inline-ref))
+(fn footnote-inline-ref (maybe list))
 (defun footnote-inline-ref (offset)
   "Parser: An inline reference with no corresponding external footnote."
   (funcall (p:ap (lambda (label content)
-                   (make-footnote-inline-ref :label label :content content))
+                   `(make-footnote-inline-ref :label ,label :content ,content))
                  (*> +footnote-start+
                      (p:take-while (lambda (c) (and (not (char= c #\space))
                                                     (not (char= c #\newline))
@@ -1705,22 +1709,22 @@ This last line should not be part of the footnote.")
 #+nil
 (p:parse #'footnote-inline-ref "[fn:1: This is the *inline* reference]")
 
-(fn horizontal-line (maybe horizontal-line))
+(fn horizontal-line (maybe list))
 (defun horizontal-line (offset)
   "Parser: A horizontal line of at least 5 dashes."
   (multiple-value-bind (res next)
       (funcall (*> +horizontal+ (p:consume (lambda (c) (char= c #\-)))) offset)
-    (cond ((p:ok? res) (values (make-horizontal-line) next))
+    (cond ((p:ok? res) (values '(make-horizontal-line) next))
           (t (p:fail offset)))))
 
 #+nil
 (p:parse #'horizontal-line "----------")
 
-(fn inline-html (maybe inline-html))
+(fn inline-html (maybe list))
 (defun inline-html (offset)
   "Parser: A @@html:...@@ piece of literal HTML. Does not guarantee that the inner
 HTML is correct - that's on the user to ensure."
-  (funcall (p:ap (lambda (html) (make-inline-html :text html))
+  (funcall (p:ap (lambda (html) `(make-inline-html :text ,html))
                  (p:between +inline-html-open+
                             (p:take-while (lambda (c) (and (not (char= c #\@))
                                                            (not (char= c #\newline)))))
@@ -1730,20 +1734,20 @@ HTML is correct - that's on the user to ensure."
 #+nil
 (p:parse #'inline-html "@@html:<b>@@")
 
-(fn html-line (maybe html-line))
+(fn html-line (maybe list))
 (defun html-line (offset)
   "Parser: A single-line #+HTML: literal."
-  (funcall (p:ap (lambda (html) (make-html-line :text html))
+  (funcall (p:ap (lambda (html) `(make-html-line :text ,html))
                  (*> +html-line-open+ +consume-space+ +take1-til-end+))
            offset))
 
 #+nil
 (p:parse #'html-line "#+HTML: <b>This entire line is bold!</b>")
 
-(fn complex-html (maybe complex-html))
+(fn complex-html (maybe list))
 (defun complex-html (offset)
   "Parser: A BEGIN_EXPORT html block."
-  (funcall (p:ap (lambda (list) (make-complex-html :text (list->vector list)))
+  (funcall (p:ap (lambda (list) `(make-complex-html :text (list->vector ,list)))
                  (p:between (*> +export-open+ +consume-space+ +html+ +consume-junk+)
                             (p:many (*> (p:not +export-close+)
                                         (<* (p:take-while (lambda (c) (not (char= c #\newline))))

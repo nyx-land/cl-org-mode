@@ -30,6 +30,7 @@ by zero or more subsections."
 (deftype block ()
   "Look Haskell, Lisp can do ADTs too!"
   '(or
+    list
     ;; --- BEGIN/END Blocks --- ;;
     comment quote example center verse complex-comment complex-html
     ;; --- Code --- ;;
@@ -252,7 +253,7 @@ of them?"
 
 (deftype words ()
   "The fundamental unit of Org text content. Plain units are split word-by-word."
-  '(or bold italic highlight underline verbatim strike link image footnote-ref inline-html punct plain))
+  '(or list bold italic highlight underline verbatim strike link image footnote-ref inline-html punct plain))
 
 (defstruct link
   (attrs nil :type (or null attrs))

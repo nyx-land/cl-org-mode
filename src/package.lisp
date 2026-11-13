@@ -37,12 +37,12 @@
 
 ;; --- Entry --- ;;
 
-(fn from-string (-> (simple-array character (*)) file))
+(fn from-string (-> (simple-array character (*)) list))
 (defun from-string (str)
   "Parse an entire org file from a string."
   (p:parse (<* #'file #'p:eof) str))
 
-(fn from-file (-> (or string pathname) file))
+(fn from-file (-> (or string pathname) list))
 (defun from-file (path)
   "Parse an entire org file given a path to it."
   (from-string (string-from-file path)))
@@ -78,3 +78,6 @@
 (fn list->vector (-> list vector))
 (defun list->vector (list)
   (coerce list 'vector))
+
+(defmacro parse-org (in)
+  `(progn ,(from-file in)))
